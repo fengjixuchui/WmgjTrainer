@@ -62,12 +62,13 @@ void CAOEIITrainerDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_EDT_UnitHp, unitHp);
 }
 
-DWORD __stdcall CAOEIITrainerDlg::createUnit(LPVOID unitIdAddr)
+void __stdcall CAOEIITrainerDlg::createUnit(LPVOID unitIdAddr)
 {
 	int* pUnitId = (int*)unitIdAddr;
 	int unitId = *pUnitId;
 	__asm
 	{
+		pushad
 		mov ecx, dword ptr ds : [0x7912A0]
 		mov ecx, dword ptr ds : [ecx + 0x424]
 		mov ecx, dword ptr ds : [ecx + 0x4C]
@@ -75,13 +76,13 @@ DWORD __stdcall CAOEIITrainerDlg::createUnit(LPVOID unitIdAddr)
 		mov edx, unitId
 		push 1
 		push 0
-		mov eax, [ecx]
+		mov eax, dword ptr ds : [ecx]
 		push dword ptr ds : [ecx + 0x178]
 		push dword ptr ds : [ecx + 0x174]
 		push edx
 		call dword ptr ds : [eax + 0xAC]
+		popad
 	}
-	return 0;
 }
 
 void CAOEIITrainerDlg::modifyResource()
@@ -138,7 +139,6 @@ BEGIN_MESSAGE_MAP(CAOEIITrainerDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_WM_HOTKEY()
-	ON_WM_SETFOCUS()
 	ON_BN_CLICKED(IDC_BTN_ModifyHp, &CAOEIITrainerDlg::OnBnClickedModifyHp)
 END_MESSAGE_MAP()
 
@@ -234,6 +234,28 @@ HCURSOR CAOEIITrainerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+__declspec(naked) void testCall()
+{
+	__asm
+	{
+		pushad
+		mov ecx, dword ptr ds : [0x7912A0]
+		mov ecx, dword ptr ds : [ecx + 0x424]
+		mov ecx, dword ptr ds : [ecx + 0x4C]
+		mov ecx, dword ptr ds : [ecx + 0x4]
+		mov edx, dword ptr ds : [PARAM_ADDR]
+		push 1
+		push 0
+		mov eax, dword ptr ds : [ecx]
+		push dword ptr ds : [ecx + 0x178]
+		push dword ptr ds : [ecx + 0x174]
+		push edx
+		call dword ptr ds : [eax + 0xAC]
+		popad
+		ret
+	}
+}
+
 void CAOEIITrainerDlg::OnHotKey(UINT nHotKeyId, UINT nKey1, UINT nKey2)
 {
 	CDialogEx::OnHotKey(nHotKeyId, nKey1, nKey2);
@@ -241,28 +263,30 @@ void CAOEIITrainerDlg::OnHotKey(UINT nHotKeyId, UINT nKey1, UINT nKey2)
 	try
 	{
 		MemoryOpt memOpt;
+		memOpt.initPara(PARAM_ADDR, NULL, 0);
 		int unitId;
 		switch (nKey2)
 		{
 		case VK_NUMPAD1:
 			unitId = HEROC;
-			memOpt.initHandle();
-			memOpt.runRemoteThread(createUnit, &unitId, sizeof(unitId));
+			memOpt.writeMemory(&unitId, sizeof(unitId));
+			memOpt.runRemoteThread(testCall, NULL, 0);
 			break;
 		case VK_NUMPAD2:
 			unitId = HEROI;
-			memOpt.initHandle();
-			memOpt.runRemoteThread(createUnit, &unitId, sizeof(unitId));
+			memOpt.writeMemory(&unitId, sizeof(unitId));
+			memOpt.runRemoteThread(testCall, NULL, 0);
 			break;
 		case VK_NUMPAD3:
 			unitId = UMOSU;
-			memOpt.initHandle();
-			memOpt.runRemoteThread(createUnit, &unitId, sizeof(unitId));
+			memOpt.writeMemory(&unitId, sizeof(unitId));
+			memOpt.runRemoteThread(testCall, NULL, 0);
 			break;
 		case VK_NUMPAD4:
 			unitId = ULGBW;
-			memOpt.initHandle();
-			memOpt.runRemoteThread(createUnit, &unitId, sizeof(unitId));
+			memOpt.writeMemory(&unitId, sizeof(unitId));
+			memOpt.runRemoteThread(testCall, NULL, 0);
+			//memOpt.runRemoteThread(createUnit, &unitId, sizeof(unitId));
 			break;
 		case VK_NUMPAD5:
 			modifyResource();
@@ -302,25 +326,25 @@ void CAOEIITrainerDlg::OnBnClickedModifyHp()
 	}
 }
 
-void CAOEIITrainerDlg::OnSetFocus(CWnd* pOldWnd)
-{
-	CDialogEx::OnSetFocus(pOldWnd);
-
-	int unitOffset[] = { UNIT_OFFSET1 };
-	try
-	{
-		MemoryOpt memOpt;
-		memOpt.initPara(UNIT_BASE, unitOffset, sizeof(unitOffset) / sizeof(int));
-
-		unitOffset[0] = HP_OFFSET;
-		memOpt.readOffsetMemory(unitOffset, 1, &unitHp, sizeof(unitHp));
-	}
-	catch (const std::exception & e)
-	{
-		CString error;
-		error = e.what();
-		MessageBox(error);
-	}
-
-	UpdateData(FALSE);
-}
+//void CAOEIITrainerDlg::OnSetFocus(CWnd* pOldWnd)
+//{
+//	CDialogEx::OnSetFocus(pOldWnd);
+//
+//	int unitOffset[] = { UNIT_OFFSET1 };
+//	try
+//	{
+//		MemoryOpt memOpt;
+//		memOpt.initPara(UNIT_BASE, unitOffset, sizeof(unitOffset) / sizeof(int));
+//
+//		unitOffset[0] = HP_OFFSET;
+//		memOpt.readOffsetMemory(unitOffset, 1, &unitHp, sizeof(unitHp));
+//	}
+//	catch (const std::exception & e)
+//	{
+//		CString error;
+//		error = e.what();
+//		MessageBox(error);
+//	}
+//
+//	UpdateData(FALSE);
+//}
