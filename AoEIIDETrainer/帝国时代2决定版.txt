@@ -1,0 +1,230 @@
+64位下调用协议只有一种，协议如下:
+    前四个整型或指针类型参数由RCX,RDX,R8,R9依次传递，前四个浮点类型参数由XMM0,XMM1,XMM2,XMM3依次传递。
+    调用函数为前四个参数在调用栈上保留相应的空间，称作shadow space或spill slot。即使被调用方没有或小于4个参数，调用函数仍然保留那么多的栈空间，这有助于在某些特殊情况下简化调用约定。
+    除前四个参数以外的任何其他参数通过栈来传递，从右至左依次入栈。
+    由调用函数负责清理调用栈。
+    小于等于64位的整型或指针类型返回值由RAX传递。
+    浮点返回值由XMM0传递。
+    更大的返回值(比如结构体)，由调用方在栈上分配空间，并有RCX持有该空间的指针并传递给被调用函数，因此整型参数使用的寄存器依次右移一格，实际只可以利用3个寄存器，其余参数入栈。函数调用结束后，RAX返回该空间的指针。
+    除RCX,RDX,R8,R9以外，RAX、R10、R11、XMM4 和 XMM5也是易变化的(volatile)寄存器。
+    RBX, RBP, RDI, RSI, R12, R14, R14, and R15寄存器则必须在使用时进行保护。
+    在寄存器中，所有参数都是右对齐的。小于64位的参数并不进行高位零扩展，也就是高位是无法预测的垃圾数据。 
+
+食物寻址：
+00007FF698A4C17F | 48:8BD9                  | mov rbx,rcx                             |
+00007FF698A4C263 | 48:8B4B 68               | mov rcx,qword ptr ds:[rbx+68]           |
+00007FF698A4C287 | F3:0F110491              | movss dword ptr ds:[rcx+rdx*4],xmm0     | 修改食物
+[rcx+68]+0*4==1BCC717AC80
+
+00007FF698BF08BE | 48:8BF9                  | mov rdi,rcx                             |
+00007FF698BF098A | 48:8B4F 18               | mov rcx,qword ptr ds:[rdi+18]           |
+[[rcx+18]+68]+0*4==1BCC717AC80
+
+00007FF698B1FF2A | 48:8BC8                  | mov rcx,rax                             |
+[[rax+18]+68]+0*4==1BCC717AC80
+
+00007FF698A33CF4 | 4C:8B81 68010000         | mov r8,qword ptr ds:[rcx+168]           |
+00007FF698A33D03 | 49:8B04C0                | mov rax,qword ptr ds:[r8+rax*8]         |
+[[[[rcx+168]+23*8]+18]+68]+0*4==1BCC717AC80
+
+00007FF69853EA52 | 48:8BF9                  | mov rdi,rcx                             |
+00007FF69853EB00 | 48:8B87 C8000000         | mov rax,qword ptr ds:[rdi+C8]           |
+00007FF69853EB07 | 48:8B88 D0000000         | mov rcx,qword ptr ds:[rax+D0]           |
+00007FF69853EB0E | 48:8B49 08               | mov rcx,qword ptr ds:[rcx+8]            |
+[[[[[[[rcx+C8]+D0]+8]+168]+23*8]+18]+68]+0*4==1BCC717AC80
+
+00007FF698566174 | 48:8BD9                  | mov rbx,rcx                             |
+00007FF6985661EA | 48:8B8B B8000000         | mov rcx,qword ptr ds:[rbx+B8]           |
+00007FF6985661F1 | 48:81C1 28BB0000         | add rcx,BB28                            |
+[[[[[[[[rcx+B8]+BB28+C8]+D0]+8]+168]+23*8]+18]+68]+0*4==1BCC717AC80
+
+00007FF698564BCE | 48:8BF9                  | mov rdi,rcx                             |
+00007FF698564D6F | 48:8BCF                  | mov rcx,rdi                             |
+[[[[[[[[rcx+B8]+BB28+C8]+D0]+8]+168]+23*8]+18]+68]+0*4==1BCC717AC80
+
+00007FF6985766A8 | 48:8BCF                  | mov rcx,rdi                             |
+[[[[[[[[rdi+B8]+BB28+C8]+D0]+8]+168]+23*8]+18]+68]+0*4==1BCC717AC80
+
+CE搜索rdi得到三个基地址：
+7FF69AC0F668
+7FF69AC114D8
+7FF69AC12C60
+
+
+定位刷单位call：
+00007FF698B889D9 | 48:8B03                  | mov rax,qword ptr ds:[rbx]              | 000001BCFE52F130
+00007FF698B889DC | 41:BE 01000000           | mov r14d,1                              |
+00007FF698B889E2 | 44:897424 28             | mov dword ptr ss:[rsp+28],r14d          | 1
+00007FF698B889E7 | 0F57C0                   | xorps xmm0,xmm0                         |
+00007FF698B889EA | F3:0F114424 20           | movss dword ptr ss:[rsp+20],xmm0        | 0
+00007FF698B889F0 | 0F28DE                   | movaps xmm3,xmm6                        | 42620000
+00007FF698B889F3 | 0F28D7                   | movaps xmm2,xmm7                        | 428F0000
+00007FF698B889F6 | 8B56 28                  | mov edx,dword ptr ds:[rsi+28]           | 231
+00007FF698B889F9 | 48:8BCB                  | mov rcx,rbx                             |
+00007FF698B889FC | FF90 50010000            | call qword ptr ds:[rax+150]             |
+以上好像是帝国时代2原版刷单位代码
+
+[[[[[[[[7FF69AC0F668]+B8]+BBF0]+D0]+8]+168]+118]+18]=1BCFE52F130 代表玩家阵营
+
+sub rsp,0x40
+mov rbx,[0x7FF69AC0F668]
+mov rbx,[rbx+0xB8]
+mov rbx,[rbx+0xBBF0]
+mov rbx,[rbx+0xD0]
+mov rbx,[rbx+0x8]
+mov rbx,[rbx+0x168]
+mov rbx,[rbx+0x118]
+mov rbx,[rbx+0x18]
+mov rax,qword ptr ds:[rbx]
+mov dword ptr ss:[rsp+0x28],1
+mov dword ptr ss:[rsp+0x20],0
+movss xmm3,0x42620000
+movss xmm2,0x428F0000
+mov edx,0x231
+mov rcx,rbx
+call qword ptr ds:[rax+0x150]
+
+插入代码片段位置：
+00007FF66C2578F4 | 48:83C4 28               | add rsp,28                              |
+
+
+食物再寻址：
+
+00007FF66B767C58 | 48:8B41 68               | mov rax,qword ptr ds:[rcx+68]           |
+00007FF66B767C69 | F342:0F110480            | movss dword ptr ds:[rax+r8*4],xmm0      | 修改食物和人口
+[rcx+68]+0*4==2AE91C920C0
+
+00007FF66B751CFC | 48:8BD9                  | mov rbx,rcx                             |
+00007FF66B751EE5 | 48:8BCB                  | mov rcx,rbx                             |
+[rcx+68]+0*4==2AE91C920C0
+
+00007FF66B1B9A1B | 48:8B56 10               | mov rdx,qword ptr ds:[rsi+10]           |
+00007FF66B1A45CF | 48:8B4A 18               | mov rcx,qword ptr ds:[rdx+18]           |
+[[[rsi+10]+18]+68]+0*4==2AE91C920C0
+
+CE查询rsi：
+00007FF66B1A5A10 | 48:8B41 10               | mov rax,qword ptr ds:[rcx+10]           |
+00007FF66B1A5A19 | 48:8B00                  | mov rax,qword ptr ds:[rax]              | [rax]:sub_7FF66C963E80
+[[[[[rcx+10]]+10]+18]+68]+0*4==2AE91C920C0
+
+00007FF66B1AA039 | 48:8B8B 58020000         | mov rcx,qword ptr ds:[rbx+258]          |
+[[[[[[rbx+258]+10]]+10]+18]+68]+0*4==2AE91C920C0
+
+CE查询rbx：
+找到两个基址
+结论：新版游戏好像是每个民族对应一个基址？？？
+
+维京食物再寻址：
+00007FF66B767C58 | 48:8B41 68               | mov rax,qword ptr ds:[rcx+68]           |
+00007FF66B767C69 | F342:0F110480            | movss dword ptr ds:[rax+r8*4],xmm0      | 修改食物和人口
+[rcx+68]+0*4==1D4983FA560
+
+00007FF66B751CFC | 48:8BD9                  | mov rbx,rcx                             |
+00007FF66B751EE5 | 48:8BCB                  | mov rcx,rbx                             |
+[rcx+68]+0*4==1D4983FA560
+
+00007FF66B1A4599 | 48:8B57 10               | mov rdx,qword ptr ds:[rdi+10]           |
+00007FF66B1A45CF | 48:8B4A 18               | mov rcx,qword ptr ds:[rdx+18]           |
+[[rdx+18]+68]+0*4==1D4983FA560
+
+一个相当靠上的跳转
+00007FF66B1A3B9B | 48:8BF9                  | mov rdi,rcx                             |
+[[[rcx+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B8BE1FA | 48:8BD9                  | mov rbx,rcx                             |
+00007FF66B8BE2F0 | 48:8B4B 28               | mov rcx,qword ptr ds:[rbx+28]           |
+[[[[rcx+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B8EA894 | 48:8BD9                  | mov rbx,rcx                             |
+00007FF66B8EAA79 | 48:8BCB                  | mov rcx,rbx                             |
+[[[[rcx+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B1ABA88 | 48:8BF9                  | mov rdi,rcx                             |
+00007FF66B1ABB49 | 48:8BCF                  | mov rcx,rdi                             |
+[[[[rcx+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B349996 | 48:8BF9                  | mov rdi,rcx                             |
+00007FF66B349B5A | 48:8BCF                  | mov rcx,rdi                             |
+[[[[rcx+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B91640E | 48:8BD9                  | mov rbx,rcx                             |
+00007FF66B9166B4 | 48:8BCB                  | mov rcx,rbx                             |
+[[[[rcx+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B8EDB10 | 48:8B45 08               | mov rax,qword ptr ss:[rbp+8]            |
+00007FF66B8EDB14 | 48:8B3407                | mov rsi,qword ptr ds:[rdi+rax]          | [rdi+rax*1]:sub_7FF66B8F2C00
+00007FF66B8EDB18 | 48:8BCE                  | mov rcx,rsi                             |
+[[[[[20+[rbp+8]]+28]+10]+18]+68]+0*4==2AE91C90840
+
+CE搜索rbp：
+00007FF66B3E9DA4 | 48:8BE9                  | mov rbp,rcx                             |
+00007FF66B3EA948 | 48:8B45 58               | mov rax,qword ptr ss:[rbp+58]           |
+00007FF66B3EA956 | 48:8B48 28               | mov rcx,qword ptr ds:[rax+28]           |
+[[[[[20+[[[rcx+58]+28]+8]]+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B3E8ADC | 48:8BD9                  | mov rbx,rcx                             |
+00007FF66B3E8D2F | 48:8BCB                  | mov rcx,rbx                             |
+[[[[[20+[[[rcx+58]+28]+8]]+28]+10]+18]+68]+0*4==2AE91C90840
+
+跳转自 sub_7FF66B47BE90+A
+00007FF66B47BE90 | 48:8B89 28110000         | mov rcx,qword ptr ds:[rcx+1128]         |
+[[[[[20+[[[[rcx+1128]+58]+28]+8]]+28]+10]+18]+68]+0*4==2AE91C90840
+
+00007FF66B7052C9 | 48:8B0D 700A2302         | mov rcx,qword ptr ds:[7FF66D935D40]     |
+[[[[[20+[[[[[7FF66D935D40]+1128]+58]+28]+8]]+28]+10]+18]+68]+0*4==2AE91C90840
+
+
+
+Build 33059寻址：
+00007FF7B8868998 | 48:8B41 68               | mov rax,qword ptr ds:[rcx+68]           | rcx+68:L"退撈ǐ"
+00007FF7B88689A9 | F342:0F110480            | movss dword ptr ds:[rax+r8*4],xmm0      |
+[rcx+68]+0*4==1D064889000
+
+00007FF7B8852A3C | 48:8BD9                  | mov rbx,rcx                             |
+00007FF7B8852C25 | 48:8BCB                  | mov rcx,rbx                             |
+[rcx+68]+0*4==1D064889000
+
+00007FF7B82A4B69 | 48:8B57 10               | mov rdx,qword ptr ds:[rdi+10]           | rdi+10:L"籠一ǐ"
+00007FF65A354B9F | 48:8B4A 18               | mov rcx,qword ptr ds:[rdx+18]           |
+[[[rdi+10]+18]+68]+0*4==1D064889000
+
+00007FF7B82A416B | 48:8BF9                  | mov rdi,rcx                             | rcx:sub_7FF7B82A3E1D+797
+[[[rcx+10]+18]+68]+0*4==1D064889000
+
+00007FF7B82A6929 | 48:8BF9                  | mov rdi,rcx                             |
+00007FF7B82A6956 | 48:8B4F 10               | mov rcx,qword ptr ds:[rdi+10]           |
+00007FF7B82A698F | 48:8B09                  | mov rcx,qword ptr ds:[rcx]              | [rcx]:sub_7FF7B9A61A48
+[[[[[rcx+10]]+10]+18]+68]+0*4==1D064889000
+
+00007FF7B82AC058 | 48:8BF9                  | mov rdi,rcx                             |
+00007FF7B82AC2FF | 48:8B8F 58020000         | mov rcx,qword ptr ds:[rdi+258]          |
+[[[[[[rcx+258]+10]]+10]+18]+68]+0*4==1D064889000
+
+00007FF7B8449F66 | 48:8BF9                  | mov rdi,rcx                             |
+00007FF7B844A12A | 48:8BCF                  | mov rcx,rdi                             |
+[[[[[[rcx+258]+10]]+10]+18]+68]+0*4==1D064889000
+
+
+扫描代表的玩家地址：AoE2DE_s.exe+9DDA13
+AoE2DE_s.exe+9DDA0F - 89 7C 24 6C           - mov [rsp+6C],edi
+AoE2DE_s.exe+9DDA13 - 48 8B 01              - mov rax,[rcx]
+AoE2DE_s.exe+9DDA16 - 48 8D 54 24 6C        - lea rdx,[rsp+6C]
+AoE2DE_s.exe+9DDA1B - FF 90 80020000        - call qword ptr [rax+00000280]
+
+rcx+10 为1代表玩家
+
+插入刷单位代码处：
+00007FF61C309A24 | 48:83C4 28               | add rsp,28                              |
+
+刷单位代码：
+00007FF7E4669729 | 48:8B03                  | mov rax,qword ptr ds:[rbx]              | rax:sub_7FF7E585B059+3F, [rbx]:sub_7FF7E585B059+3F
+00007FF7E466972C | 41:BE 01000000           | mov r14d,1                              |
+00007FF7E4669732 | 44:897424 28             | mov dword ptr ss:[rsp+28],r14d          |
+00007FF7E4669737 | 0F57C0                   | xorps xmm0,xmm0                         |
+00007FF7E466973A | F3:0F114424 20           | movss dword ptr ss:[rsp+20],xmm0        |
+00007FF7E4669740 | 0F28DE                   | movaps xmm3,xmm6                        |
+00007FF7E4669743 | 0F28D7                   | movaps xmm2,xmm7                        |
+00007FF7E4669746 | 8B56 28                  | mov edx,dword ptr ds:[rsi+28]           |
+00007FF7E4669749 | 48:8BCB                  | mov rcx,rbx                             |
+00007FF7E466974C | FF90 50010000            | call qword ptr ds:[rax+150]             | 刷单位地方
+
